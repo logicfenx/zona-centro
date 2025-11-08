@@ -1,0 +1,42 @@
+name: Publicar en NPM
+
+on:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Crear index.js dinámico
+        run: echo "console.log('Publicación automática desde GitHub Actions');" > index.js
+      - name: Crear .npmignore
+        run: echo '.github' > .npmignore
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org/'
+      - name: Configurar autenticación en NPM
+        run: echo '//registry.npmjs.org/:_authToken=${{ secrets.NPM_ACCESS_TOKEN }}' > ~/.npmrc
+      - name: Establecer registry explícitamente
+        run: npm config set registry https://registry.npmjs.org
+      - name: Validar autenticación con scope
+        run: |
+          echo '🔍 Validando scope de NPM...'
+          npm whoami --scope=logicfenx || {
+            echo '❌ Token de NPM no tiene acceso al scope logicfenx';
+            exit 1;
+          }
+      - name: Publicar en NPM con fallback
+        run: |
+          echo '📦 Intentando publicar paquete con scope...'
+          if ! npm publish --access public --verbose; then
+            echo '⚠️ Publicación con scope fallida. Cambiando a sin scope...';
+            original_name=$(jq -r '.name' package.json)
+            new_name="${original_name##*/}"
+            sed -i "s|\"name\": \"${original_name}\"|\"name\": \"${new_name}\"|" package.json
+            npm publish --access public --verbose || exit 1;
+          fi
